@@ -1,0 +1,9 @@
+names:
+- flood
+nc: 1
+train: ../dataset/train/images
+val: ../dataset/val/images
+test: ../dataset/test/images
+
+labels: ../dataset/test/labels
+
