@@ -1,6 +1,5 @@
-train: ../train/images
-val: ../valid/images
-test: ../test/images
-
-nc: 3
-names: ['wheelup', 'wheeldown','windowup']
+names:
+- flood
+nc: 1
+train: /content/dataset/dataset/train
+val: /content/dataset/dataset/val

@@ -3,7 +3,7 @@ import random
 import shutil
 
 # Configuration
-IMAGE_DIR = 'image'
+IMAGE_DIR = 'images'
 LABEL_DIR = 'labels'
 OUTPUT_DIR = 'dataset'
 SPLITS = {
@@ -40,7 +40,7 @@ for split_name, file_list in splits.items():
         base = os.path.splitext(img_file)[0]
         label_file = f"{base}.txt"
 
-        # Copy image
+        # Copy test
         shutil.copy(os.path.join(IMAGE_DIR, img_file), os.path.join(img_out_dir, img_file))
         # Copy corresponding label if exists
         src_lbl = os.path.join(LABEL_DIR, label_file)
@@ -50,5 +50,5 @@ for split_name, file_list in splits.items():
 # Summary
 print("Dataset split completed:")
 for split_name in splits:
-    print(f"  {split_name}: {len(splits[split_name])} images")
+    print(f"  {split_name}: {len(splits[split_name])} test")
 

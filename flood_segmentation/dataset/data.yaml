@@ -1,0 +1,7 @@
+names:
+- flood
+nc: 1
+train: ./train/images
+val: ./val/images
+test: ./test/images
+
