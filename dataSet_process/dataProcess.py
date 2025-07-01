@@ -3,9 +3,9 @@ import random
 import shutil
 
 # Configuration
-IMAGE_DIR = 'images'
-LABEL_DIR = 'labels'
-OUTPUT_DIR = 'dataset'
+IMAGE_DIR = 'train/images'
+LABEL_DIR = 'train/labels'
+OUTPUT_DIR = '../flood_segmentation/dataset'
 SPLITS = {
     'train': 0.7,
     'val': 0.2,
@@ -38,7 +38,7 @@ for split_name, file_list in splits.items():
 
     for img_file in file_list:
         base = os.path.splitext(img_file)[0]
-        label_file = f"{base}.txt"
+        label_file = f"{base}.png"
 
         # Copy test
         shutil.copy(os.path.join(IMAGE_DIR, img_file), os.path.join(img_out_dir, img_file))

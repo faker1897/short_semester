@@ -1,88 +1,99 @@
-import yaml
+import os
 import numpy as np
+from glob import glob
 from tqdm import tqdm
-from PIL import Image, ImageDraw
+import torch
 from ultralytics import YOLO
-from pathlib import Path
+import cv2
 
-def txt_to_mask(txt_path, image_size):
-    """
-    将 YOLOv8 segmentation 的 .txt 标注（class + 多边形顶点）
-    转成二值的 Flood 掩码（uint8 0/1）。
-    假设 .txt 每行：cls x1 y1 x2 y2 ... xN yN （归一化坐标）
-    """
-    W, H = image_size
-    mask = np.zeros((H, W), dtype=np.uint8)
-    with open(txt_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            parts = line.strip().split()
-            cls = int(float(parts[0]))   # 应为 0（flood）
-            coords = np.array(parts[1:], dtype=float).reshape(-1, 2)
-            poly = [(x * W, y * H) for x, y in coords]
-            m = Image.new('L', (W, H), 0)
-            ImageDraw.Draw(m).polygon(poly, outline=1, fill=1)
-            mask[np.array(m) == 1] = 1
-    return mask
+# ========== 配置部分 ==========
+MODEL_PATH   = "best.pt"
+IMG_DIR      = "../dataset/test/images"
+GT_MASK_DIR  = "../dataset/test/labels"
+MASK_EXT     = ".png"
+DEVICE       = "cuda" if torch.cuda.is_available() else "cpu"
+# =============================
+
+def evaluate_binary(model, img_dir, gt_dir, mask_ext, device):
+    # 初始化混淆矩阵元素
+    TP = TN = FP = FN = 0
+
+    img_paths = sorted(sum((glob(os.path.join(img_dir, ext))
+                            for ext in ("*.jpg","*.jpeg","*.png")), []))
+
+    for img_p in tqdm(img_paths, desc="Inference"):
+        name, _ = os.path.splitext(os.path.basename(img_p))
+        gt_p = os.path.join(gt_dir, name + mask_ext)
+        if not os.path.isfile(gt_p):
+            continue
+
+        # 1) 读取真值掩码，转为二值：0=背景，1=前景
+        gt = cv2.imread(gt_p, cv2.IMREAD_UNCHANGED)
+        if gt is None: continue
+        if gt.ndim == 3: gt = gt[...,0]
+        gt = (gt > 0).astype(np.uint8)
+
+        # 2) 模型推理
+        res = model.predict(source=img_p, device=device,
+                            task="segment", verbose=False)[0]
+
+        H, W = gt.shape
+        pred = np.zeros((H, W), dtype=np.uint8)
+
+        # 判空 & resize
+        if res.masks is not None and getattr(res.masks, "data", None) is not None and len(res.masks.data):
+            masks = res.masks.data.cpu().numpy()  # [N, Mh, Mw]
+            for m in masks:
+                # 重采样到 (W, H)
+                m_rs = cv2.resize(m.astype(np.uint8), (W, H),
+                                  interpolation=cv2.INTER_NEAREST)
+                pred[m_rs > 0] = 1
+
+        # 3) 累计 TP/TN/FP/FN
+        TP += np.logical_and(pred == 1, gt == 1).sum()
+        TN += np.logical_and(pred == 0, gt == 0).sum()
+        FP += np.logical_and(pred == 1, gt == 0).sum()
+        FN += np.logical_and(pred == 0, gt == 1).sum()
+
+    # 4) 计算两类指标
+    # 背景类 = 0
+    acc_bg = TN / (TN + FP + 1e-12)
+    iu_bg  = TN / (TN + FP + FN + 1e-12)
+    # 前景类 = 1
+    acc_fg = TP / (TP + FN + 1e-12)
+    iu_fg  = TP / (TP + FP + FN + 1e-12)
+
+    # 平均
+    mPA  = (acc_bg + acc_fg) / 2
+    mIoU = (iu_bg  + iu_fg)  / 2
+
+    return {
+        "acc_bg": acc_bg,
+        "acc_fg": acc_fg,
+        "mPA":    mPA,
+        "iu_bg":  iu_bg,
+        "iu_fg":  iu_fg,
+        "mIoU":   mIoU
+    }
 
 def main():
-    # 1) 读取你自己的 data.yaml（脚本同目录下）
-    #    要确保其中有：
-    #      test:   "./dataset/test/images"
-    #      labels: "./dataset/test/labels"
-    #      nc: 1
-    #      names: ["flood"]
-    cfg = yaml.safe_load(open("data.yaml", encoding="utf-8"))
-    img_dir   = Path(cfg["test"])
-    label_dir = Path(cfg["labels"])
-    names     = cfg["names"]
-    assert len(names) == 1, "本脚本仅支持单类 flood 评估"
+    # 加载模型
+    model = YOLO(MODEL_PATH)
+    model.to(DEVICE)
+    model.model.eval()
 
-    # 2) 扫描所有测试图片
-    img_paths = sorted(img_dir.glob("*.*"))
-    if not img_paths:
-        raise RuntimeError(f"在 {img_dir} 下未找到任何图片")
+    stats = evaluate_binary(model, IMG_DIR, GT_MASK_DIR, MASK_EXT, DEVICE)
 
-    # 3) 加载训练好的模型权重
-    model = YOLO("best.pt")
+    # 打印结果
+    print("\n===== Pixel Accuracy =====")
+    print(f"Background: {stats['acc_bg']*100:6.2f}%")
+    print(f"Foreground: {stats['acc_fg']*100:6.2f}%")
+    print(f"Mean (mPA):{stats['mPA']*100:6.2f}%")
 
-    # 4) 用于统计 Flood 类像素级 TP/FP/FN
-    tp = fp = fn = 0
-
-    # 5) 遍历每张图，预测 & 累加
-    for img_p in tqdm(img_paths, desc="Evaluating flood"):
-        # 5.1 预测分割实例
-        res = model.predict(source=str(img_p), task="segment", conf=0.1, verbose=False)[0]
-        masks = res.masks.data.cpu().numpy()   # (N, H, W)
-
-        # 5.2 构建二值预测掩码 pred (1 表示 flood)
-        if masks.shape[0] == 0:
-            pred = np.zeros((res.orig_shape[0], res.orig_shape[1]), dtype=np.uint8)
-        else:
-            # masks 可能是 bool 或 0/1，先强制为 bool
-            bool_masks = masks.astype(bool)
-            H, W = bool_masks.shape[1:]
-            pred = np.zeros((H, W), dtype=np.uint8)
-            for inst_mask in bool_masks:
-                pred[inst_mask] = 1
-
-        # 5.3 读取并解析 GT
-        txt_p = label_dir / f"{img_p.stem}.txt"
-        if not txt_p.exists():
-            raise FileNotFoundError(f"找不到标签文件：{txt_p}")
-        # 注意：txt_to_mask 返回 0/1，1 表示 flood
-        gt = txt_to_mask(txt_p, (pred.shape[1], pred.shape[0]))
-
-        # 5.4 累加 TP/FP/FN（像素级）
-        tp += np.logical_and(pred == 1, gt == 1).sum()
-        fp += np.logical_and(pred == 1, gt == 0).sum()
-        fn += np.logical_and(pred == 0, gt == 1).sum()
-
-    # 6) 计算单类 mPA（PA）和 mIoU
-    mPA  = tp / (tp + fn + 1e-12)
-    mIoU = tp / (tp + fp + fn + 1e-12)
-
-    print(f"\nmPA (Mean Pixel Accuracy): {mPA*100:.2f}%")
-    print(f"mIoU (Mean IoU)          : {mIoU*100:.2f}%")
+    print("\n===== IoU =====")
+    print(f"Background: {stats['iu_bg']*100:6.2f}%")
+    print(f"Foreground: {stats['iu_fg']*100:6.2f}%")
+    print(f"Mean (mIoU):{stats['mIoU']*100:6.2f}%\n")
 
 if __name__ == "__main__":
     main()
