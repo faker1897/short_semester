@@ -3,4 +3,4 @@ val: ./val/images
 test: ./test/images
 
 nc: 3
-names: ['wheelup', 'wheeldown','windowup']
+names: ['high', 'middle','low']

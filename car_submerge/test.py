@@ -3,13 +3,16 @@
 test_detection_metrics.py
 
 Evaluate a trained YOLOv8 detection model on a test/validation set
-using YOLO-format .txt labels. Computes per-class Precision, Recall, and F1-score.
+using YOLO-format .txt labels. Computes per-class Accuracy, Precision, Recall, and F1-score.
 """
 
 import os
 import numpy as np
 import cv2
+import time
 from ultralytics import YOLO
+
+start = time.perf_counter()
 
 def bbox_iou(box1, box2):
     """Compute IoU between two boxes given as [x1,y1,x2,y2]."""
@@ -48,9 +51,9 @@ def read_yolo_labels(txt_path, img_w, img_h):
 
 if __name__ == "__main__":
     # --- User-configurable paths ---
-    model_path = "runs/train/car_submerge5/weights/best.pt"
-    img_dir    = "dataset/val/images"
-    lbl_dir    = "dataset/val/labels"
+    model_path = "runs/train/car_submerge/weights/best.pt"
+    img_dir= "dataset/test/images"
+    lbl_dir= "dataset/test/labels"
     num_classes = 3  # number of classes (0,1,...)
 
     # Load model
@@ -110,11 +113,33 @@ if __name__ == "__main__":
         tp = stats[c]['TP']
         fp = stats[c]['FP']
         fn = stats[c]['FN']
+        # Accuracy: TP / (TP + FP + FN)
+        accuracy = tp / (tp + fp + fn + 1e-8)
         precision = tp / (tp + fp + 1e-8)
         recall    = tp / (tp + fn + 1e-8)
         f1        = 2 * precision * recall / (precision + recall + 1e-8)
         print(f"Class {c}:")
         print(f"  TP: {tp}, FP: {fp}, FN: {fn}")
+        print(f"  Accuracy:  {accuracy:.4f}")
         print(f"  Precision: {precision:.4f}")
         print(f"  Recall:    {recall:.4f}")
         print(f"  F1-score:  {f1:.4f}\n")
+
+    end = time.perf_counter()
+    print(f"Elapsed time: {end - start:.3f} seconds")
+
+total_tp = sum(stats[c]['TP'] for c in range(num_classes))
+total_fp = sum(stats[c]['FP'] for c in range(num_classes))
+total_fn = sum(stats[c]['FN'] for c in range(num_classes))
+
+overall_accuracy = total_tp / (total_tp + total_fp + total_fn + 1e-8)
+overall_precision = total_tp / (total_tp + total_fp + 1e-8)
+overall_recall    = total_tp / (total_tp + total_fn + 1e-8)
+overall_f1        = 2 * overall_precision * overall_recall / (overall_precision + overall_recall + 1e-8)
+
+print("Overall metrics:")
+print(f"  TP: {total_tp}, FP: {total_fp}, FN: {total_fn}")
+print(f"  Accuracy:  {overall_accuracy:.4f}")
+print(f"  Precision: {overall_precision:.4f}")
+print(f"  Recall:    {overall_recall:.4f}")
+print(f"  F1-score:  {overall_f1:.4f}")
