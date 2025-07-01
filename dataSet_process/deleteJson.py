@@ -21,7 +21,7 @@ def delete_json_files(root_dir):
     return count
 
 def main():
-    total = delete_json_files('./image/data')
+    total = delete_json_files('image')
     print(f"\nDone. Total .json files deleted: {total}")
 
 if __name__ == "__main__":

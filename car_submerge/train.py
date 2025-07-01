@@ -9,9 +9,9 @@ if __name__ == '__main__':
     # Train the model
     results = model.train(
         data="./dataset/data.yaml",
-        epochs=100,
+        epochs=200,
         imgsz=640,
-        batch=16,
+        batch=32,
         project="runs/train",
         name="car_submerge"
     )

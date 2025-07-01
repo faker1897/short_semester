@@ -1,11 +1,11 @@
 task: detect
 mode: train
 model: yolo11n.yaml
-data: ./dataset/1.yaml
-epochs: 50
+data: ./dataset/data.yaml
+epochs: 100
 time: null
 patience: 100
-batch: 16
+batch: 64
 imgsz: 640
 save: true
 save_period: -1
@@ -13,7 +13,7 @@ cache: false
 device: null
 workers: 8
 project: runs/train
-name: car_submerge2
+name: car_submerge3
 exist_ok: false
 pretrained: yolo11n.pt
 optimizer: auto
@@ -102,4 +102,4 @@ auto_augment: randaugment
 erasing: 0.4
 cfg: null
 tracker: botsort.yaml
-save_dir: runs\train\car_submerge2
+save_dir: runs\train\car_submerge3

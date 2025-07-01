@@ -5,7 +5,7 @@ import shutil
 # Configuration
 IMAGE_DIR = 'image'
 LABEL_DIR = 'labels'
-OUTPUT_DIR = 'dataset'
+OUTPUT_DIR = '../car_submerge/dataset'
 SPLITS = {
     'train': 0.7,
     'val': 0.2,
